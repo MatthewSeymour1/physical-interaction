@@ -39,7 +39,7 @@ const int colours[10][3] = {
 };
 
 
- const  int NUMCOLOURS = 10;
+ const int NUMCOLOURS = 10;
 
 // Change this to match your LED:
 // true  = common anode   (common leg connected to 5V)
@@ -62,7 +62,7 @@ void setup() {
   Serial.begin(9600);
 
   randomSeed(analogRead(A4));
-  
+
   int currentColour = random(NUMCOLOURS); // a number from 0 to 9
   Serial.print(currentColour);
   Serial.print( " ");
