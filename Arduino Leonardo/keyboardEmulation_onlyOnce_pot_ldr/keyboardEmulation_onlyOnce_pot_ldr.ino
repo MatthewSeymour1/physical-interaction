@@ -38,12 +38,16 @@ const int buttonPin = 7;
 int ctrlButtonVal = -1;
 int oldCtrlButtonVal = -2;
 
+//compare currentKey and lastKey
 int lastKey = -2;
 int keyNum = -1;
 
-//stores mapped ldrValues
+//stores mapped last and current lLDRdr Values
 int ldrNum = -1;
 int lastLdr = -2;
+
+int ldrMin = 700;
+int ldrMax = 900;
 
 void setup() {
   Serial.begin(9600);
@@ -52,10 +56,14 @@ void setup() {
 }
 
 void loop() {
+  //getting our analog sensor values
   int potValue = analogRead(potPin);
   int ldrValue = analogRead(ldrPin);
+ 
+  //manual calibration of ldrMin and max values
+  
   keyNum = map(potValue, 0, 1023, 0, 2);  // Map to 3 possible key states
-  ldrNum = map(ldrValue, 600, 900, 0, 2);  //Map to 3 possible states
+  ldrNum = map(ldrValue, ldrMin, ldrMax, 0, 2);  //Map to 3 possible states
 
   ctrlButtonVal = digitalRead(buttonPin);
   if (ctrlButtonVal == LOW && oldCtrlButtonVal == HIGH) {
@@ -64,13 +72,18 @@ void loop() {
 
  
   if (DEBUG) {
-    Serial.print("lastKey: ");
+    Serial.print("ldr:");
+    Serial.print(ldrValue);
+    Serial.print(",");
+    Serial.print("pot:");
+    Serial.print(potValue);
+    Serial.print("lastKey:");
     Serial.print(lastKey);
-    Serial.print(", keyNum: ");
+    Serial.print(",keyNum:");
     Serial.print(keyNum);
-    Serial.print(", ldrNum: ");
+    Serial.print(",ldrNum:");
     Serial.print(ldrNum);
-    Serial.print(", lastLdr: ");
+    Serial.print(",lastLdr:");
     Serial.println(lastLdr);
   }
 
@@ -103,7 +116,7 @@ void loop() {
       case 0:
         Serial.println("case A");
         Keyboard.press('1');
-        //Keyboard.release('A');
+        //Keyboard.release('A');22323
         break;
       case 1:
         Serial.println("case B");
@@ -117,6 +130,7 @@ void loop() {
         break;
     }
   }
+
   lastKey = keyNum; //store current value in lastKey
   lastLdr = ldrNum; //store current ldrvalue in lastLdr21212123
 
