@@ -4,6 +4,7 @@
 // To deal with the ultra_sonic_sensor's occasional (incorrect) very high reading, perhaps using a rolling median filter. store the 3 most recent readings, and take the median reading.
 // So for example, 40, 42, 1000. it would choose 42. every time a new reading is received, add that to the end of the array and remove the first reading in the array. 
 // So if the 3 most recent readings are 40, 42, 1000 and the next reading is 44, then the array would become 42, 1000, 44. and the median value of that would be 44.
+// would need to store at least 4 or 5 recent readings. when there is noise, the bad readings can have 2 or even 3 bad readings in a row. 
 
 #include <Keyboard.h>
 
@@ -24,28 +25,32 @@ int oldSButtonValue = HIGH;
 unsigned long lastSafetyDebounceTime = 0;
 unsigned long lastWButtonDebounceTime = 0;
 unsigned long lastSButtonDebounceTime = 0;
+unsigned long lastPrintTime = 0;
 unsigned long debounceDelay = 50;
 
 const int redLEDPin = 11;
 const int greenLEDPin = 10;
-const int blueLEDPin = 9;
 
 int redValue = 0;
 int greenValue = 0;
-int blueValue = 0;
 
 
 
 // This is the ultra_sonic_sensor variables.
-// const int trigPin = 5;
-// const int echoPin = 3;
-// float duration, distance;
+const int trigPin = 5;
+const int echoPin = 3;
+const float minimumDistance = 3;
+const float maximumDistance = 30;
+const float straightAhead = ((maximumDistance - minimumDistance) / 2); // 13.5
+const float deadZone = 5;
+float duration;
+float distance = straightAhead;
 // end of the ultra_sonic_sensor variables.
 
 void setup() {
   // This is the ultra_sonic_sensor code in SETUP.
-  // pinMode(trigPin, OUTPUT);
-  // pinMode(echoPin, INPUT);
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
   // end of the ultra_sonic_sensor code in SETUP.
 
   Serial.begin(9600);
@@ -54,7 +59,6 @@ void setup() {
   pinMode(sButtonPin, INPUT_PULLUP);
   pinMode(redLEDPin, OUTPUT);
   pinMode(greenLEDPin, OUTPUT);
-  pinMode(blueLEDPin, OUTPUT);
   Keyboard.begin();
   Serial.println(safetyIsOn ? "safety IS on" : "safety NOT on");
 }
@@ -62,20 +66,50 @@ void setup() {
 void loop() {
 
   // This is the ultra_sonic_sensor code in LOOP.
-  // digitalWrite(trigPin, LOW);
-  // delayMicroseconds(2);
-  // digitalWrite(trigPin, HIGH);
-  // delayMicroseconds(10);
-  // digitalWrite(trigPin, LOW);
 
-  // duration = pulseIn(echoPin, HIGH);
-  // distance = (duration * .0343) / 2;
-  // Serial.print("Distance: ");
-  // Serial.println(distance);
+  if (millis() - lastPrintTime > debounceDelay && safetyIsOn == false) {
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
 
-  // // This effectively limits the speed of the entire void loop(). Lowering this number will allow it to run more often and without
-  // delay(100);
+    duration = pulseIn(echoPin, HIGH);
+    distance = (duration * .0343) / 2;
+
+    // Set minimum and maximum distance. 
+    if (distance > 30) {
+      distance = 30;
+    }
+    if (distance < 3) {
+      distance = 3;
+    }
+
+    Serial.print("Distance: ");
+    Serial.println(distance);
+
+    lastPrintTime = millis();
+  }
+
+  if (safetyIsOn == false && distance < straightAhead - deadZone) {
+    Keyboard.press('d');
+  }
+  else {
+    Keyboard.release('d');
+  }
+
+  if (safetyIsOn == false && distance > straightAhead + deadZone) {
+    Keyboard.press('a');
+  }
+  else {
+    Keyboard.release('a');
+  }
+
   // end of ultra_sonic_sensor code in LOOP.
+
+
+
+
 
   int safetyButtonReading = digitalRead(safetyButtonPin);
   int wButtonReading = digitalRead(wButtonPin);
@@ -134,12 +168,10 @@ void loop() {
   if (safetyIsOn == true) {
     analogWrite(redLEDPin, redValue);
     analogWrite(greenLEDPin, 255);
-    analogWrite(blueLEDPin, 255);
   }
   else {
     analogWrite(redLEDPin, 255);
     analogWrite(greenLEDPin, greenValue);
-    analogWrite(blueLEDPin, 255);
   }
 
   
