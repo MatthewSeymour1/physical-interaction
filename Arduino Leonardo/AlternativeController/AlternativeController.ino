@@ -30,7 +30,9 @@ unsigned long lastVerySlightlyPressedTime = 0;
 unsigned long lastSlightlyPressedTime = 0;
 unsigned long lastPressedTime = 0;
 unsigned long pressedDelay = 500;
+unsigned long slightlyPressedDelay = 0;
 unsigned long debounceDelay = 50;
+int speedZone = 0;
 
 const int redLEDPin = 11;
 const int greenLEDPin = 10;
@@ -49,7 +51,7 @@ const float maximumDistance = 50;
 const float minimumDistance = 3;
 const float straightAhead = ((maximumDistance - minimumDistance) / 2); // 13.5
 const float mappedStraightAhead = 50;
-const float mappedDeadZone = 15;
+const float mappedDeadZone = 10;
 float duration;
 float distance = straightAhead;
 float mappedDistance = mappedStraightAhead;
@@ -82,6 +84,7 @@ void loop() {
     digitalWrite(trigPin, HIGH);
     delayMicroseconds(10);
     digitalWrite(trigPin, LOW);
+    Serial.println(speedZone);
 
     duration = pulseIn(echoPin, HIGH);
     distance = (duration * .0343) / 2;
@@ -100,65 +103,81 @@ void loop() {
     // to ensure it gives a float as map forces it's output to be an integer. 
     mappedDistance = map(distance * 100, minimumDistance * 100, maximumDistance * 100, 0, 10000) / 100.0;
 
-    Serial.print("Distance: ");
-    Serial.println(distance);
-    Serial.print("MAPPED Distance: ");
-    Serial.println(mappedDistance);
+    // Serial.print("Distance: ");
+    // Serial.println(distance);
+    // Serial.print("MAPPED Distance: ");
+    // Serial.println(mappedDistance);
 
     lastPrintTime = millis();
   }
 
-  if (millis() - lastVerySlightlyPressedTime > 50) {
-    wasVerySlightlyPressed = !wasVerySlightlyPressed;
-    lastVerySlightlyPressedTime = millis();
-  }
-  if (millis() - lastSlightlyPressedTime > 200) {
-    wasSlightlyPressed = !wasSlightlyPressed;
-    lastSlightlyPressedTime = millis();
-  }
-  if (millis() - lastPressedTime > pressedDelay) {
-    wasPressed = !wasPressed;
-    if (wasPressed) {
-      pressedDelay = 200;
-    }
-    else {
-      pressedDelay = 500;
-    }
-    lastPressedTime = millis();
-  }
 
 
   if (safetyIsOn == false && mappedDistance < mappedStraightAhead - mappedDeadZone) {
     if (mappedDistance <= (50 - mappedDeadZone) / 4) { // if mappedDeadZone is 10, then 10
+      speedZone = 4;
       Keyboard.press('d');
     }
     else if (mappedDistance <= ((50 - mappedDeadZone) / 4) * 2) { // if mappedDeadZone is 10, then 20
-      if (wasPressed == false) {
-        Keyboard.press('d');
-      }
-      else {
-        Keyboard.release('d');
+      if (millis() - lastPressedTime > pressedDelay) {
+        lastPressedTime = millis();
+        if (wasPressed == false) {
+          Keyboard.press('d');
+          wasPressed = true;
+          if (speedZone != 3) {
+            pressedDelay = 5000; // ======================================TEST THIS==================================================
+          }
+          else {
+            pressedDelay = 500
+          }
+        }
+        else {
+          Keyboard.release('d');
+          wasPressed = false;
+          pressedDelay = 200;
+        }
+        speedZone = 3;
       }
     }
     else if (mappedDistance <= ((50 - mappedDeadZone) / 4) * 3) { // if mappedDeadZone is 10, then 30
-      if (wasSlightlyPressed == false) {
-        Keyboard.press('d');
-      }
-      else {
-        Keyboard.release('d');
+      if (millis() - lastSlightlyPressedTime > slightlyPressedDelay) { // original values were on for 200 off for 200
+        lastSlightlyPressedTime = millis();
+        if (wasSlightlyPressed == false) {
+          Keyboard.press('d');
+          wasSlightlyPressed = true;
+          if (speedZone != 2) {
+            slightlyPressedDelay = 200;
+          }
+          else {
+            slightlyPressedDelay = 100;
+          }
+        }
+        else {
+          Keyboard.release('d');
+          wasSlightlyPressed = false;
+          slightlyPressedDelay = 100;
+        }
+        speedZone = 2;
       }
     }
-    else if (mappedDistance <= 50 - mappedDeadZone) { // if mappedDeadZone is 10, then 40
+    else { // if mappedDeadZone is 10, then 40
+      if (millis() - lastVerySlightlyPressedTime > 50) {
+        lastVerySlightlyPressedTime = millis();
+      }
       if (wasVerySlightlyPressed == false) {
         Keyboard.press('d');
+        wasVerySlightlyPressed = true;
       }
       else
        {
         Keyboard.release('d');
+        wasVerySlightlyPressed = false;
       }
+      speedZone = 1;
     }
   }
   else {
+    speedZone = 0;
     Keyboard.release('d');
   }
 
