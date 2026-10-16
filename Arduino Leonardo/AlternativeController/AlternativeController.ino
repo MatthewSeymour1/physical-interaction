@@ -26,6 +26,10 @@ unsigned long lastSafetyDebounceTime = 0;
 unsigned long lastWButtonDebounceTime = 0;
 unsigned long lastSButtonDebounceTime = 0;
 unsigned long lastPrintTime = 0;
+unsigned long lastVerySlightlyPressedTime = 0;
+unsigned long lastSlightlyPressedTime = 0;
+unsigned long lastPressedTime = 0;
+unsigned long pressedDelay = 500;
 unsigned long debounceDelay = 50;
 
 const int redLEDPin = 11;
@@ -34,17 +38,21 @@ const int greenLEDPin = 10;
 int redValue = 0;
 int greenValue = 0;
 
-
+bool wasVerySlightlyPressed = false;
+bool wasSlightlyPressed = false;
+bool wasPressed = false;
 
 // This is the ultra_sonic_sensor variables.
 const int trigPin = 5;
 const int echoPin = 3;
+const float maximumDistance = 50;
 const float minimumDistance = 3;
-const float maximumDistance = 30;
 const float straightAhead = ((maximumDistance - minimumDistance) / 2); // 13.5
-const float deadZone = 5;
+const float mappedStraightAhead = 50;
+const float mappedDeadZone = 15;
 float duration;
 float distance = straightAhead;
+float mappedDistance = mappedStraightAhead;
 // end of the ultra_sonic_sensor variables.
 
 void setup() {
@@ -65,8 +73,9 @@ void setup() {
 
 void loop() {
 
-  // This is the ultra_sonic_sensor code in LOOP.
+// This is the ultra_sonic_sensor code in LOOP.
 
+  // This is not actually a debouncer (it doesn't actually protect against bad readings), it just limits how often the ultra_sonic_sensor runs.
   if (millis() - lastPrintTime > debounceDelay && safetyIsOn == false) {
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
@@ -77,35 +86,116 @@ void loop() {
     duration = pulseIn(echoPin, HIGH);
     distance = (duration * .0343) / 2;
 
-    // Set minimum and maximum distance. 
-    if (distance > 30) {
-      distance = 30;
+    // Set/Enforce minimum and maximum distance. 
+    if (distance > maximumDistance) {
+      distance = maximumDistance;
     }
-    if (distance < 3) {
-      distance = 3;
+    if (distance < minimumDistance) {
+      distance = minimumDistance;
     }
+
+    // map converts the range of minimumDistance - maximumDistance to 0 - 100 as a float. map() floors all of it's arguments and 
+    // returns an integer so in order to get a float from 0 - 100 as an output i multiplied each argument by 100 and then divided 
+    // the output by 100.0 at the end. the decimal point in 100.0 is necessary 
+    // to ensure it gives a float as map forces it's output to be an integer. 
+    mappedDistance = map(distance * 100, minimumDistance * 100, maximumDistance * 100, 0, 10000) / 100.0;
 
     Serial.print("Distance: ");
     Serial.println(distance);
+    Serial.print("MAPPED Distance: ");
+    Serial.println(mappedDistance);
 
     lastPrintTime = millis();
   }
 
-  if (safetyIsOn == false && distance < straightAhead - deadZone) {
-    Keyboard.press('d');
+  if (millis() - lastVerySlightlyPressedTime > 50) {
+    wasVerySlightlyPressed = !wasVerySlightlyPressed;
+    lastVerySlightlyPressedTime = millis();
+  }
+  if (millis() - lastSlightlyPressedTime > 200) {
+    wasSlightlyPressed = !wasSlightlyPressed;
+    lastSlightlyPressedTime = millis();
+  }
+  if (millis() - lastPressedTime > pressedDelay) {
+    wasPressed = !wasPressed;
+    if (wasPressed) {
+      pressedDelay = 200;
+    }
+    else {
+      pressedDelay = 500;
+    }
+    lastPressedTime = millis();
+  }
+
+
+  if (safetyIsOn == false && mappedDistance < mappedStraightAhead - mappedDeadZone) {
+    if (mappedDistance <= (50 - mappedDeadZone) / 4) { // if mappedDeadZone is 10, then 10
+      Keyboard.press('d');
+    }
+    else if (mappedDistance <= ((50 - mappedDeadZone) / 4) * 2) { // if mappedDeadZone is 10, then 20
+      if (wasPressed == false) {
+        Keyboard.press('d');
+      }
+      else {
+        Keyboard.release('d');
+      }
+    }
+    else if (mappedDistance <= ((50 - mappedDeadZone) / 4) * 3) { // if mappedDeadZone is 10, then 30
+      if (wasSlightlyPressed == false) {
+        Keyboard.press('d');
+      }
+      else {
+        Keyboard.release('d');
+      }
+    }
+    else if (mappedDistance <= 50 - mappedDeadZone) { // if mappedDeadZone is 10, then 40
+      if (wasVerySlightlyPressed == false) {
+        Keyboard.press('d');
+      }
+      else
+       {
+        Keyboard.release('d');
+      }
+    }
   }
   else {
     Keyboard.release('d');
   }
 
-  if (safetyIsOn == false && distance > straightAhead + deadZone) {
-    Keyboard.press('a');
+  if (safetyIsOn == false && mappedDistance > mappedStraightAhead + mappedDeadZone) {
+    if (mappedDistance >= 100 - ((50 - mappedDeadZone) / 4)) { // if mappedDeadZone is 10, then 90
+      Keyboard.press('a');
+    }
+    else if (mappedDistance >= 100 - (((50 - mappedDeadZone) / 4) * 2)) { // if mappedDeadZone is 10, then 80
+      if (wasPressed == false) {
+        Keyboard.press('a');
+      }
+      else {
+        Keyboard.release('a');
+      }
+    }
+    else if (mappedDistance >= 100 - (((50 - mappedDeadZone) / 4) * 3)) { // if mappedDeadZone is 10, then 70
+      if (wasSlightlyPressed == false) {
+        Keyboard.press('a');
+      }
+      else {
+        Keyboard.release('a');
+      }
+    }
+    else if (mappedDistance >= 50 + mappedDeadZone) { // if mappedDeadZone is 10, then 60
+      if (wasVerySlightlyPressed == false) {
+        Keyboard.press('a');
+      }
+      else
+       {
+        Keyboard.release('a');
+      }
+    }
   }
   else {
     Keyboard.release('a');
   }
-
-  // end of ultra_sonic_sensor code in LOOP.
+// end of ultra_sonic_sensor code in LOOP.
 
 
 
