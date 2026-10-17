@@ -125,16 +125,16 @@ void loop() {
           Keyboard.press('d');
           wasPressed = true;
           if (speedZone != 3) {
-            pressedDelay = 5000; // ======================================TEST THIS==================================================
+            pressedDelay = 500;
           }
           else {
-            pressedDelay = 500
+            pressedDelay = 150;
           }
         }
         else {
           Keyboard.release('d');
           wasPressed = false;
-          pressedDelay = 200;
+          pressedDelay = 100;
         }
         speedZone = 3;
       }
@@ -163,15 +163,14 @@ void loop() {
     else { // if mappedDeadZone is 10, then 40
       if (millis() - lastVerySlightlyPressedTime > 50) {
         lastVerySlightlyPressedTime = millis();
-      }
-      if (wasVerySlightlyPressed == false) {
-        Keyboard.press('d');
-        wasVerySlightlyPressed = true;
-      }
-      else
-       {
-        Keyboard.release('d');
-        wasVerySlightlyPressed = false;
+        if (wasVerySlightlyPressed == false) {
+          Keyboard.press('d');
+          wasVerySlightlyPressed = true;
+        }
+        else {
+          Keyboard.release('d');
+          wasVerySlightlyPressed = false;
+        }
       }
       speedZone = 1;
     }
