@@ -1,10 +1,15 @@
-// Currently this contains just the code from the ultra_sonic_sensor file. and it just prints to the serial console thingy the distance.
-// Though first, try and get two simple buttons to emulate the keyboard for 'W' and 'S'. Make sure to have a safety. A button that you need to hold down for the keyboard emulation to work. To avoid arduino taking over your pc D:
-
 // To deal with the ultra_sonic_sensor's occasional (incorrect) very high reading, perhaps using a rolling median filter. store the 3 most recent readings, and take the median reading.
 // So for example, 40, 42, 1000. it would choose 42. every time a new reading is received, add that to the end of the array and remove the first reading in the array. 
 // So if the 3 most recent readings are 40, 42, 1000 and the next reading is 44, then the array would become 42, 1000, 44. and the median value of that would be 44.
 // would need to store at least 4 or 5 recent readings. when there is noise, the bad readings can have 2 or even 3 bad readings in a row. 
+
+// The code that constrains the distance readings to a minimum and maximum distance can be improved. 
+// Right now it sets any reading above the maxium to equal the maximum. But that makes it so if you take your hand away 
+// from the ultra_sonic_sensor then it will by default read the max distance, forcing a speedZone = 4 left turn. 
+// Ideally, if you take your hand away, it should default to aiming mappedStraightAhead. 
+// but if you are purposefully trying to do a speedZone = 4 left turn, and you accidentally move your hand above 
+// the maximum distance value, it should not aim at mappedStraightAhead, it should aim at speedZone = 4 left turn. 
+// so in some cases set the distance to be straight ahead. and in some cases set the distance to be the maximum. 
 
 #include <Keyboard.h>
 
@@ -26,11 +31,19 @@ unsigned long lastSafetyDebounceTime = 0;
 unsigned long lastWButtonDebounceTime = 0;
 unsigned long lastSButtonDebounceTime = 0;
 unsigned long lastPrintTime = 0;
-unsigned long lastVerySlightlyPressedTime = 0;
-unsigned long lastSlightlyPressedTime = 0;
-unsigned long lastPressedTime = 0;
-unsigned long pressedDelay = 500;
-unsigned long slightlyPressedDelay = 0;
+
+unsigned long lastVerySlightlyPressedTimeD = 0;
+unsigned long lastSlightlyPressedTimeD = 0;
+unsigned long lastPressedTimeD = 0;
+unsigned long pressedDelayD = 0;
+unsigned long slightlyPressedDelayD = 0;
+
+unsigned long lastVerySlightlyPressedTimeA = 0;
+unsigned long lastSlightlyPressedTimeA = 0;
+unsigned long lastPressedTimeA = 0;
+unsigned long pressedDelayA = 0;
+unsigned long slightlyPressedDelayA = 0;
+
 unsigned long debounceDelay = 50;
 int speedZone = 0;
 
@@ -40,16 +53,20 @@ const int greenLEDPin = 10;
 int redValue = 0;
 int greenValue = 0;
 
-bool wasVerySlightlyPressed = false;
-bool wasSlightlyPressed = false;
-bool wasPressed = false;
+bool wasVerySlightlyPressedD = false;
+bool wasSlightlyPressedD = false;
+bool wasPressedD = false;
+
+bool wasVerySlightlyPressedA = false;
+bool wasSlightlyPressedA = false;
+bool wasPressedA = false;
 
 // This is the ultra_sonic_sensor variables.
 const int trigPin = 5;
 const int echoPin = 3;
 const float maximumDistance = 50;
 const float minimumDistance = 3;
-const float straightAhead = ((maximumDistance - minimumDistance) / 2); // 13.5
+const float straightAhead = ((maximumDistance + minimumDistance) / 2);
 const float mappedStraightAhead = 50;
 const float mappedDeadZone = 10;
 float duration;
@@ -77,7 +94,8 @@ void loop() {
 
 // This is the ultra_sonic_sensor code in LOOP.
 
-  // This is not actually a debouncer (it doesn't actually protect against bad readings), it just limits how often the ultra_sonic_sensor runs.
+  // This is not actually a debouncer (it doesn't actually protect against bad readings), it just limits how often
+  // the ultra_sonic_sensor runs / gets a reading of the distance. 
   if (millis() - lastPrintTime > debounceDelay && safetyIsOn == false) {
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
@@ -111,65 +129,71 @@ void loop() {
     lastPrintTime = millis();
   }
 
-
-
+  // CORRECT. COMPLETED. 'D' LOGIC. 
+  // if safety is off AND if turning right to any degree
   if (safetyIsOn == false && mappedDistance < mappedStraightAhead - mappedDeadZone) {
     if (mappedDistance <= (50 - mappedDeadZone) / 4) { // if mappedDeadZone is 10, then 10
       speedZone = 4;
       Keyboard.press('d');
     }
     else if (mappedDistance <= ((50 - mappedDeadZone) / 4) * 2) { // if mappedDeadZone is 10, then 20
-      if (millis() - lastPressedTime > pressedDelay) {
-        lastPressedTime = millis();
-        if (wasPressed == false) {
+      if (millis() - lastPressedTimeD > pressedDelayD) {
+        lastPressedTimeD = millis();
+        if (wasPressedD == false) {
           Keyboard.press('d');
-          wasPressed = true;
-          if (speedZone != 3) {
-            pressedDelay = 500;
+          wasPressedD = true;
+          if (speedZone < 3) {
+            // This value is the windup of the steering wheel. The intention is to hold down the button until the steering wheel gets 
+            // to the correct angle, and then tap the button consistently so that the steering wheel angle remains roughly the same. 
+            // So the windup time should only happen when it needs winding up, hence, it doesn't need to if it's coming from a higher speedZone. 
+            pressedDelayD = 500;
           }
           else {
-            pressedDelay = 150;
+            pressedDelayD = 150;
           }
         }
         else {
           Keyboard.release('d');
-          wasPressed = false;
-          pressedDelay = 100;
+          wasPressedD = false;
+          pressedDelayD = 100;
         }
         speedZone = 3;
       }
     }
     else if (mappedDistance <= ((50 - mappedDeadZone) / 4) * 3) { // if mappedDeadZone is 10, then 30
-      if (millis() - lastSlightlyPressedTime > slightlyPressedDelay) { // original values were on for 200 off for 200
-        lastSlightlyPressedTime = millis();
-        if (wasSlightlyPressed == false) {
+      if (millis() - lastSlightlyPressedTimeD > slightlyPressedDelayD) { // original values were on for 200 off for 200
+        lastSlightlyPressedTimeD = millis();
+        if (wasSlightlyPressedD == false) {
           Keyboard.press('d');
-          wasSlightlyPressed = true;
-          if (speedZone != 2) {
-            slightlyPressedDelay = 200;
+          wasSlightlyPressedD = true;
+          if (speedZone < 2) {
+            // This value is the windup of the steering wheel. The intention is to hold down the button until the steering wheel gets 
+            // to the correct angle, and then tap the button consistently so that the steering wheel angle remains roughly the same. 
+            // So the windup time should only happen when it needs winding up, hence, it doesn't need to if it's coming from a higher speedZone. 
+            slightlyPressedDelayD = 200;
           }
           else {
-            slightlyPressedDelay = 100;
+            slightlyPressedDelayD = 100;
           }
         }
         else {
           Keyboard.release('d');
-          wasSlightlyPressed = false;
-          slightlyPressedDelay = 100;
+          wasSlightlyPressedD = false;
+          slightlyPressedDelayD = 100;
         }
         speedZone = 2;
       }
     }
     else { // if mappedDeadZone is 10, then 40
-      if (millis() - lastVerySlightlyPressedTime > 50) {
-        lastVerySlightlyPressedTime = millis();
-        if (wasVerySlightlyPressed == false) {
+      if (millis() - lastVerySlightlyPressedTimeD > 50) {
+        lastVerySlightlyPressedTimeD = millis();
+        if (wasVerySlightlyPressedD == false) {
           Keyboard.press('d');
-          wasVerySlightlyPressed = true;
+          wasVerySlightlyPressedD = true;
         }
         else {
           Keyboard.release('d');
-          wasVerySlightlyPressed = false;
+          wasVerySlightlyPressedD = false;
         }
       }
       speedZone = 1;
@@ -180,39 +204,86 @@ void loop() {
     Keyboard.release('d');
   }
 
+  // START OF NEW 'A' LOGIC ===============================
+  // if safety is off AND if turning left to any degree
   if (safetyIsOn == false && mappedDistance > mappedStraightAhead + mappedDeadZone) {
     if (mappedDistance >= 100 - ((50 - mappedDeadZone) / 4)) { // if mappedDeadZone is 10, then 90
+      speedZone = 4;
       Keyboard.press('a');
     }
     else if (mappedDistance >= 100 - (((50 - mappedDeadZone) / 4) * 2)) { // if mappedDeadZone is 10, then 80
-      if (wasPressed == false) {
-        Keyboard.press('a');
-      }
-      else {
-        Keyboard.release('a');
+      if (millis() - lastPressedTimeA > pressedDelayA) {
+        lastPressedTimeA = millis();
+        if (wasPressedA == false) {
+          Keyboard.press('a');
+          wasPressedA = true;
+          if (speedZone < 3) {
+            // This value is the windup of the steering wheel. The intention is to hold down the button until the steering wheel gets 
+            // to the correct angle, and then tap the button consistently so that the steering wheel angle remains roughly the same. 
+            // So the windup time should only happen when it needs winding up, hence, it doesn't need to if it's coming from a higher speedZone. 
+            pressedDelayA = 500;
+          }
+          else {
+            pressedDelayA = 150;
+          }
+        }
+        else {
+          Keyboard.release('a');
+          wasPressedA = false;
+          pressedDelayA = 100;
+        }
+        speedZone = 3;
       }
     }
     else if (mappedDistance >= 100 - (((50 - mappedDeadZone) / 4) * 3)) { // if mappedDeadZone is 10, then 70
-      if (wasSlightlyPressed == false) {
-        Keyboard.press('a');
-      }
-      else {
-        Keyboard.release('a');
+      if (millis() - lastSlightlyPressedTimeA > slightlyPressedDelayA) { // original values were on for 200 off for 200
+        lastSlightlyPressedTimeA = millis();
+        if (wasSlightlyPressedA == false) {
+          Keyboard.press('a');
+          wasSlightlyPressedA = true;
+          if (speedZone < 2) {
+            // This value is the windup of the steering wheel. The intention is to hold down the button until the steering wheel gets 
+            // to the correct angle, and then tap the button consistently so that the steering wheel angle remains roughly the same. 
+            // So the windup time should only happen when it needs winding up, hence, it doesn't need to if it's coming from a higher speedZone. 
+            slightlyPressedDelayA = 200;
+          }
+          else {
+            slightlyPressedDelayA = 100;
+          }
+        }
+        else {
+          Keyboard.release('a');
+          wasSlightlyPressedA = false;
+          slightlyPressedDelayA = 100;
+        }
+        speedZone = 2;
       }
     }
-    else if (mappedDistance >= 50 + mappedDeadZone) { // if mappedDeadZone is 10, then 60
-      if (wasVerySlightlyPressed == false) {
-        Keyboard.press('a');
+    else { // if mappedDeadZone is 10, then 60
+      if (millis() - lastVerySlightlyPressedTimeA > 50) {
+        lastVerySlightlyPressedTimeA = millis();
+        if (wasVerySlightlyPressedA == false) {
+          Keyboard.press('a');
+          wasVerySlightlyPressedA = true;
+        }
+        else {
+          Keyboard.release('a');
+          wasVerySlightlyPressedA = false;
+        }
       }
-      else
-       {
-        Keyboard.release('a');
-      }
+      speedZone = 1;
     }
   }
   else {
+    speedZone = 0;
     Keyboard.release('a');
   }
+
+
+  // END OF NEW 'A' LOGIC ===============================
+
+
+
 // end of ultra_sonic_sensor code in LOOP.
 
 
