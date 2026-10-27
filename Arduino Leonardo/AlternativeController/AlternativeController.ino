@@ -7,6 +7,7 @@ bool safetyIsOn = true;
 const int safetyButtonPin = 8;
 const int wButtonPin = 7;
 const int sButtonPin = 4;
+const int rButtonPin = 2;
 
 int safetyButtonValue = HIGH;
 int oldSafetyButtonValue = HIGH;
@@ -17,12 +18,20 @@ int oldWButtonValue = HIGH;
 int sButtonValue = HIGH;
 int oldSButtonValue = HIGH;
 
+int rButtonValue = HIGH;
+int oldRButtonValue = HIGH;
+
 unsigned long lastSafetyDebounceTime = 0;
 unsigned long lastWButtonDebounceTime = 0;
 unsigned long lastSButtonDebounceTime = 0;
+unsigned long lastRButtonDebounceTime = 0;
 unsigned long lastPrintTime = 0;
-unsigned long debounceDelay = 50;
+const unsigned long debounceDelay = 50;
+const unsigned long holdTime = 1000; // 1 second.
+unsigned long safetyPressStartTime = 0;
 
+bool safetyLongPressed = false; 
+bool safetyLEDIsOn = true;
 const int redLEDPin = 11;
 const int greenLEDPin = 10;
 int redValue = 0;
@@ -30,8 +39,9 @@ int greenValue = 0;
 
 const int trigPin = 5;
 const int echoPin = 3;
-const float maximumDistance = 50; // WAS 50 BEFORE CHANGING TO THE DANCING THING.
-const float minimumDistance = 3; // WAS 3 BEFORE CHANGING TO THE DANCING THING.
+const float maximumDistance = 50; // Default is 50.
+const float minimumDistance = 3; // Default is 3.
+float tenPercent = (maximumDistance - minimumDistance) / 10;
 const float straightAhead = ((maximumDistance + minimumDistance) / 2);
 float duration;
 float distance = straightAhead;
@@ -49,6 +59,7 @@ void setup() {
   pinMode(safetyButtonPin, INPUT_PULLUP);
   pinMode(wButtonPin, INPUT_PULLUP);
   pinMode(sButtonPin, INPUT_PULLUP);
+  pinMode(rButtonPin, INPUT_PULLUP);
   pinMode(redLEDPin, OUTPUT);
   pinMode(greenLEDPin, OUTPUT);
   Keyboard.begin();
@@ -68,8 +79,8 @@ void loop() {
     duration = pulseIn(echoPin, HIGH);
     distanceReading = (duration * .0343) / 2;
 
-    // Only accepts new readings that are less than 100 centimeters away from the most recent reading. 
-    if (fabs(recentDistanceReadings[4] - distanceReading) < 100) {
+    // Only accepts new readings that are within the range of maximum to minimum ± 10%.
+    if (distanceReading < (maximumDistance + tenPercent) && distanceReading > minimumDistance - tenPercent) {
       distance = distanceReading;
       // Set/Enforce minimum and maximum distance.
       if (distance > maximumDistance) {
@@ -89,7 +100,7 @@ void loop() {
       medianValue = median(recentDistanceReadings, 5);
 
       // Uses custom funcion to print the values of the recentDistanceReadings array.
-      printRecentReadingsArray();
+      // printRecentReadingsArray();
 
       // The range of values that the joystick reads is 32767 to -32768.
       mappedJoystickDistance = map(medianValue, minimumDistance, maximumDistance, 32767, -32768);
@@ -111,6 +122,7 @@ void loop() {
   int safetyButtonReading = digitalRead(safetyButtonPin);
   int wButtonReading = digitalRead(wButtonPin);
   int sButtonReading = digitalRead(sButtonPin);
+  int rButtonReading = digitalRead(rButtonPin);
 
   if (safetyButtonReading != oldSafetyButtonValue) {
     lastSafetyDebounceTime = millis();
@@ -119,10 +131,19 @@ void loop() {
     if (safetyButtonReading != safetyButtonValue) {
       safetyButtonValue = safetyButtonReading;
       if (safetyButtonValue == LOW) {
+        safetyPressStartTime = millis();
+        safetyLongPressed = false;
+      }
+      else if (!safetyLongPressed) {
         safetyIsOn = !safetyIsOn;
         Serial.println(safetyIsOn ? "safety IS on" : "safety NOT on");
       }
     }
+  }
+  if (safetyButtonValue == LOW && safetyLongPressed == false && (millis() - safetyPressStartTime) > holdTime) {
+    safetyLEDIsOn = !safetyLEDIsOn;
+    safetyLongPressed = true;
+    Serial.println(safetyLEDIsOn ? "safety LED IS on" : "safety LED NOT on");
   }
   oldSafetyButtonValue = safetyButtonReading;
 
@@ -146,7 +167,17 @@ void loop() {
   }
   oldSButtonValue = sButtonReading;
 
-  // Button controls and setting the LED colour to be red or green depending.
+  if (rButtonReading != oldRButtonValue) {
+    lastRButtonDebounceTime = millis();
+  }
+  if ((millis() - lastRButtonDebounceTime) > debounceDelay) {
+    if (rButtonReading != rButtonValue) {
+      rButtonValue = rButtonReading;
+    }
+  }
+  oldRButtonValue = rButtonReading;
+
+  // Button controls
   if (safetyIsOn == false) {
     if (wButtonValue == LOW) {
       Keyboard.press('w');
@@ -158,12 +189,28 @@ void loop() {
     } else {
       Keyboard.release('s');
     }
-    analogWrite(redLEDPin, 255);
-    analogWrite(greenLEDPin, greenValue);
+    if (rButtonValue == LOW) {
+      Keyboard.press('r');
+    } else {
+      Keyboard.release('r');
+    }
   }
   else {
     Keyboard.releaseAll();
-    analogWrite(redLEDPin, redValue);
+  }
+  // Setting the LED colour to be red or green depending on the safetyButton state. And turning off the LED entirely if it's turned off.
+  if (safetyLEDIsOn) {
+    if (safetyIsOn) {
+      analogWrite(redLEDPin, redValue);
+      analogWrite(greenLEDPin, 255);
+    }
+    else {
+      analogWrite(redLEDPin, 255);
+      analogWrite(greenLEDPin, greenValue);
+    }
+  }
+  else {
+    analogWrite(redLEDPin, 255);
     analogWrite(greenLEDPin, 255);
   }
 }
