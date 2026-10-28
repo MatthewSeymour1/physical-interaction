@@ -3,40 +3,63 @@
 // It also has Keyboard functionality so I removed the initial '#include <Keyboard.h>' as having both would result in an error. 
 #include <HID-Project.h>
 
+class Button {
+  public:
+    int pin;
+    char letter;
+    int value = HIGH;
+    int oldValue = HIGH;
+    unsigned long lastDebounceTime = 0;
+    int reading;
+
+    Button(int p, char l) {
+      pin = p;
+      letter = l;
+    }
+
+    void setPinMode() {
+      pinMode(pin, INPUT_PULLUP);
+    }
+    void getReading() {
+      reading = digitalRead(pin);
+    }
+    void debounceButton(unsigned long debounceDelay) {
+      if (reading != oldValue) {
+        lastDebounceTime = millis();
+      }
+      if ((millis() - lastDebounceTime) > debounceDelay) {
+        if (reading != value) {
+          value = reading;
+        }
+      }
+      oldValue = reading;
+    }
+    void buttonControl() {
+      if (value == LOW) {
+        Keyboard.press(letter);
+      }
+      else {
+        Keyboard.release(letter);
+      }
+    }
+};
+Button wButton(7, 'w');
+Button sButton(4, 's');
+Button rButton(2, 'r');
+Button safetyButton(8, '\0');
+
 bool safetyIsOn = true;
-const int safetyButtonPin = 8;
-const int wButtonPin = 7;
-const int sButtonPin = 4;
-const int rButtonPin = 2;
-
-int safetyButtonValue = HIGH;
-int oldSafetyButtonValue = HIGH;
-
-int wButtonValue = HIGH;
-int oldWButtonValue = HIGH;
-
-int sButtonValue = HIGH;
-int oldSButtonValue = HIGH;
-
-int rButtonValue = HIGH;
-int oldRButtonValue = HIGH;
-
-unsigned long lastSafetyDebounceTime = 0;
-unsigned long lastWButtonDebounceTime = 0;
-unsigned long lastSButtonDebounceTime = 0;
-unsigned long lastRButtonDebounceTime = 0;
-unsigned long lastPrintTime = 0;
+bool safetyLEDIsOn = true;
+bool safetyLongPressed = false; 
+unsigned long lastMeasurementTime = 0;
+unsigned long safetyPressStartTime = 0;
 const unsigned long debounceDelay = 50;
 const unsigned long holdTime = 1000; // 1 second.
-unsigned long safetyPressStartTime = 0;
 
-bool safetyLongPressed = false; 
-bool safetyLEDIsOn = true;
-const int redLEDPin = 11;
-const int greenLEDPin = 10;
 int redValue = 0;
 int greenValue = 0;
-
+const int redLEDPin = 11;
+const int greenLEDPin = 10;
 const int trigPin = 5;
 const int echoPin = 3;
 const float maximumDistance = 50; // Default is 50.
@@ -47,19 +70,17 @@ float duration;
 float distance = straightAhead;
 float distanceReading = straightAhead;
 float mappedJoystickDistance = 0;
-
 float recentDistanceReadings[5] = { straightAhead, straightAhead, straightAhead, straightAhead, straightAhead };
 float medianValue = straightAhead;
 
 void setup() {
-
   Serial.begin(9600);
+  safetyButton.setPinMode();
+  wButton.setPinMode();
+  sButton.setPinMode();
+  rButton.setPinMode();
   pinMode(trigPin, OUTPUT);
   pinMode(echoPin, INPUT);
-  pinMode(safetyButtonPin, INPUT_PULLUP);
-  pinMode(wButtonPin, INPUT_PULLUP);
-  pinMode(sButtonPin, INPUT_PULLUP);
-  pinMode(rButtonPin, INPUT_PULLUP);
   pinMode(redLEDPin, OUTPUT);
   pinMode(greenLEDPin, OUTPUT);
   Keyboard.begin();
@@ -68,9 +89,7 @@ void setup() {
 
 void loop() {
 
-  // This is not actually a debouncer (it doesn't actually protect against bad readings), it just limits how often
-  // the ultra_sonic_sensor runs / gets a reading of the distance.
-  if (millis() - lastPrintTime > debounceDelay && safetyIsOn == false) {
+  if (millis() - lastMeasurementTime > debounceDelay && safetyIsOn == false) {
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
     digitalWrite(trigPin, HIGH);
@@ -105,32 +124,22 @@ void loop() {
       // The range of values that the joystick reads is 32767 to -32768.
       mappedJoystickDistance = map(medianValue, minimumDistance, maximumDistance, 32767, -32768);
     }
-    lastPrintTime = millis();
-  }
-
-  // Controls the steering wheel when the safety is off and when the safety is on it sets the steering wheel to neutral. 
-  if (safetyIsOn == false) {
-    Gamepad.xAxis(mappedJoystickDistance);
-    Gamepad.write();
-  }
-  else {
-    Gamepad.xAxis(0);
-    Gamepad.write();
+    lastMeasurementTime = millis();
   }
 
   // Button debouncers. 
-  int safetyButtonReading = digitalRead(safetyButtonPin);
-  int wButtonReading = digitalRead(wButtonPin);
-  int sButtonReading = digitalRead(sButtonPin);
-  int rButtonReading = digitalRead(rButtonPin);
+  safetyButton.getReading();
+  wButton.getReading();
+  sButton.getReading();
+  rButton.getReading();
 
-  if (safetyButtonReading != oldSafetyButtonValue) {
-    lastSafetyDebounceTime = millis();
+  if (safetyButton.reading != safetyButton.oldValue) {
+    safetyButton.lastDebounceTime = millis();
   }
-  if ((millis() - lastSafetyDebounceTime) > debounceDelay) {
-    if (safetyButtonReading != safetyButtonValue) {
-      safetyButtonValue = safetyButtonReading;
-      if (safetyButtonValue == LOW) {
+  if ((millis() - safetyButton.lastDebounceTime) > debounceDelay) {
+    if (safetyButton.reading != safetyButton.value) {
+      safetyButton.value = safetyButton.reading;
+      if (safetyButton.value == LOW) {
         safetyPressStartTime = millis();
         safetyLongPressed = false;
       }
@@ -140,65 +149,31 @@ void loop() {
       }
     }
   }
-  if (safetyButtonValue == LOW && safetyLongPressed == false && (millis() - safetyPressStartTime) > holdTime) {
+  if (safetyButton.value == LOW && safetyLongPressed == false && (millis() - safetyPressStartTime) > holdTime) {
     safetyLEDIsOn = !safetyLEDIsOn;
     safetyLongPressed = true;
     Serial.println(safetyLEDIsOn ? "safety LED IS on" : "safety LED NOT on");
   }
-  oldSafetyButtonValue = safetyButtonReading;
+  safetyButton.oldValue = safetyButton.reading;
+  wButton.debounceButton(debounceDelay);
+  sButton.debounceButton(debounceDelay);
+  rButton.debounceButton(debounceDelay);
 
-  if (wButtonReading != oldWButtonValue) {
-    lastWButtonDebounceTime = millis();
-  }
-  if ((millis() - lastWButtonDebounceTime) > debounceDelay) {
-    if (wButtonReading != wButtonValue) {
-      wButtonValue = wButtonReading;
-    }
-  }
-  oldWButtonValue = wButtonReading;
-
-  if (sButtonReading != oldSButtonValue) {
-    lastSButtonDebounceTime = millis();
-  }
-  if ((millis() - lastSButtonDebounceTime) > debounceDelay) {
-    if (sButtonReading != sButtonValue) {
-      sButtonValue = sButtonReading;
-    }
-  }
-  oldSButtonValue = sButtonReading;
-
-  if (rButtonReading != oldRButtonValue) {
-    lastRButtonDebounceTime = millis();
-  }
-  if ((millis() - lastRButtonDebounceTime) > debounceDelay) {
-    if (rButtonReading != rButtonValue) {
-      rButtonValue = rButtonReading;
-    }
-  }
-  oldRButtonValue = rButtonReading;
-
-  // Button controls
+  // Button and wheel controls
   if (safetyIsOn == false) {
-    if (wButtonValue == LOW) {
-      Keyboard.press('w');
-    } else {
-      Keyboard.release('w');
-    }
-    if (sButtonValue == LOW) {
-      Keyboard.press('s');
-    } else {
-      Keyboard.release('s');
-    }
-    if (rButtonValue == LOW) {
-      Keyboard.press('r');
-    } else {
-      Keyboard.release('r');
-    }
+    wButton.buttonControl();
+    sButton.buttonControl();
+    rButton.buttonControl();
+    Gamepad.xAxis(mappedJoystickDistance);
+    Gamepad.write();
   }
   else {
     Keyboard.releaseAll();
+    Gamepad.xAxis(0);
+    Gamepad.write();
   }
-  // Setting the LED colour to be red or green depending on the safetyButton state. And turning off the LED entirely if it's turned off.
+  // LED controls. Changing the colour of the light to red or green depending on the safetyButton state.
+  // And turning off the LED entirely if it's turned off.
   if (safetyLEDIsOn) {
     if (safetyIsOn) {
       analogWrite(redLEDPin, redValue);
@@ -237,14 +212,13 @@ float median(const float arr[], int size) {
   if (size % 2 == 1) {
     return arrayCopy[size / 2];
   }
-
   return (arrayCopy[size / 2 - 1] + arrayCopy[size / 2]) / 2;
 }
 
 void printRecentReadingsArray() {
   for (int i = 0; i < 5; i++) {
     Serial.print(recentDistanceReadings[i]);
-  if (i < 4) {
+    if (i < 4) {
       Serial.print(", ");
     }
     else {
