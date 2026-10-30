@@ -1,6 +1,6 @@
-
 // <HID-Project.h> is a library that has gamepad functionality, which was used for the joystick. 
-// It also has Keyboard functionality so I removed the initial '#include <Keyboard.h>' as having both would result in an error. 
+// It also has Keyboard functionality so I removed the initial '#include <Keyboard.h>' as 
+// having both would result in an error. 
 #include <HID-Project.h>
 
 class Button {
@@ -16,14 +16,13 @@ class Button {
       pin = p;
       letter = l;
     }
-
     void setPinMode() {
       pinMode(pin, INPUT_PULLUP);
     }
     void getReading() {
       reading = digitalRead(pin);
     }
-    void debounceButton(unsigned long debounceDelay) {
+    void debounce(unsigned long debounceDelay) {
       if (reading != oldValue) {
         lastDebounceTime = millis();
       }
@@ -43,6 +42,7 @@ class Button {
       }
     }
 };
+
 Button wButton(7, 'w');
 Button sButton(4, 's');
 Button rButton(2, 'r');
@@ -55,9 +55,6 @@ unsigned long lastMeasurementTime = 0;
 unsigned long safetyPressStartTime = 0;
 const unsigned long debounceDelay = 50;
 const unsigned long holdTime = 1000; // 1 second.
-
-int redValue = 0;
-int greenValue = 0;
 const int redLEDPin = 11;
 const int greenLEDPin = 10;
 const int trigPin = 5;
@@ -89,6 +86,7 @@ void setup() {
 
 void loop() {
 
+  // Reads and filters the ultrasonic sensor distance, then maps the value to the joystick's range. 
   if (millis() - lastMeasurementTime > debounceDelay && safetyIsOn == false) {
     digitalWrite(trigPin, LOW);
     delayMicroseconds(2);
@@ -109,30 +107,34 @@ void loop() {
         distance = minimumDistance;
       }
 
-      // Rolling the values of the recent readings back one. 
+      // Using a rolling median filter to shield against bad distance readings. 
+      // Rolling the values of the recent readings back one, then adds the new distance value. 
       for (int i = 0; i < 4; i++) {
         recentDistanceReadings[i] = recentDistanceReadings[i + 1];
       }
       recentDistanceReadings[4] = distance;
+      // printArrayValues(recentDistanceReadings, 5); // For debugging. 
 
       // Uses median function 
       medianValue = median(recentDistanceReadings, 5);
-
-      // Uses custom funcion to print the values of the recentDistanceReadings array.
-      // printRecentReadingsArray();
-
+ 
       // The range of values that the joystick reads is 32767 to -32768.
       mappedJoystickDistance = map(medianValue, minimumDistance, maximumDistance, 32767, -32768);
     }
     lastMeasurementTime = millis();
   }
 
-  // Button debouncers. 
+  // Gets a reading of the button's state. 
   safetyButton.getReading();
   wButton.getReading();
   sButton.getReading();
   rButton.getReading();
 
+  // Debounces the buttons. The safety button is handled separately because 
+  // it also detects long presses to enable/disable the LED. 
+  wButton.debounce(debounceDelay);
+  sButton.debounce(debounceDelay);
+  rButton.debounce(debounceDelay);
   if (safetyButton.reading != safetyButton.oldValue) {
     safetyButton.lastDebounceTime = millis();
   }
@@ -155,9 +157,6 @@ void loop() {
     Serial.println(safetyLEDIsOn ? "safety LED IS on" : "safety LED NOT on");
   }
   safetyButton.oldValue = safetyButton.reading;
-  wButton.debounceButton(debounceDelay);
-  sButton.debounceButton(debounceDelay);
-  rButton.debounceButton(debounceDelay);
 
   // Button and wheel controls
   if (safetyIsOn == false) {
@@ -174,14 +173,15 @@ void loop() {
   }
   // LED controls. Changing the colour of the light to red or green depending on the safetyButton state.
   // And turning off the LED entirely if it's turned off.
+  // Because the RGB LED has a common anode, 255 = OFF and 0 = ON.
   if (safetyLEDIsOn) {
     if (safetyIsOn) {
-      analogWrite(redLEDPin, redValue);
+      analogWrite(redLEDPin, 0);
       analogWrite(greenLEDPin, 255);
     }
     else {
       analogWrite(redLEDPin, 255);
-      analogWrite(greenLEDPin, greenValue);
+      analogWrite(greenLEDPin, 0);
     }
   }
   else {
@@ -192,13 +192,13 @@ void loop() {
 
 //Function to get the median value of the elements in an array. 
 float median(const float arr[], int size) {
-  float arrayCopy[size];  // Variable-length array (compiler-dependent)
+  float arrayCopy[size];  // Variable-length array (compiler-dependent).
 
+  // Makes a copy of the array.
   for (int i = 0; i < size; i++) {
     arrayCopy[i] = arr[i];
   }
-
-  // Sort the copy
+  // Sorts the copy.
   for (int i = 0; i < size - 1; i++) {
     for (int j = 0; j < size - i - 1; j++) {
       if (arrayCopy[j] > arrayCopy[j + 1]) {
@@ -215,10 +215,10 @@ float median(const float arr[], int size) {
   return (arrayCopy[size / 2 - 1] + arrayCopy[size / 2]) / 2;
 }
 
-void printRecentReadingsArray() {
-  for (int i = 0; i < 5; i++) {
-    Serial.print(recentDistanceReadings[i]);
-    if (i < 4) {
+void printArrayValues(const float arr[], int size) {
+  for (int i = 0; i < size; i++) {
+    Serial.print(arr[i]);
+    if (i < size - 1) {
       Serial.print(", ");
     }
     else {
