@@ -42,7 +42,6 @@ class Button {
       }
     }
 };
-
 Button wButton(7, 'w');
 Button sButton(4, 's');
 Button rButton(2, 'r');
