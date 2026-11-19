@@ -42,7 +42,7 @@
 
 /* Includes ---------------------------------------------------------------- */
 //the generated edge-impulse inferencing libary
-#include <freshfruit-project-1_inferencing.h>
+#include <matthewseymour1-project-1_inferencing.h>
 #include <ESP_I2S.h>
 I2SClass I2S;
 
